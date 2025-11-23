@@ -1,0 +1,30 @@
+# Vosk STT Configuration
+vosk:
+  model_path: "./vosk-model-small-en-us-0.15"  # Path to Vosk model directory
+  sample_rate: 16000  # Vosk requires 16kHz
+  chunk_size: 4000    # Audio chunk size for processing
+
+# Piper TTS Configuration
+piper:
+  binary_path: "/usr/local/bin/piper"  # Path to piper binary
+  model_path: "./piper-voices/en_US-lessac-medium.onnx"  # Path to Piper model
+  config_path: "./piper-voices/en_US-lessac-medium.onnx.json"  # Path to Piper config
+  sample_rate: 22050  # Piper output sample rate
+
+# Audio Configuration
+# To find your Respeaker HAT device indices, run: python3 list_audio_devices.py
+# The Respeaker 2-Mic Pi HAT typically appears as "seeed-2mic-voicecard"
+audio:
+  input_device_index: null  # Set to device number (e.g., 2) or null for default
+  output_device_index: null  # Set to device number (e.g., 2) or null for default
+  channels: 1  # Mono
+  format: "int16"  # 16-bit PCM
+
+# Recording Configuration
+recording:
+  silence_threshold: 500  # RMS threshold for silence detection
+  silence_duration: 1.5   # Seconds of silence before stopping
+  max_recording_duration: 30  # Maximum recording time in seconds
+
+
+
