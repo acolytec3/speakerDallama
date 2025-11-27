@@ -123,6 +123,7 @@ class VoskSTT:
         last_speech_time = time.time()
         start_time = time.time()
         partial_text = ""
+        last_final_text = ""  # Track the last final result we saw
         
         try:
             while True:
@@ -153,6 +154,7 @@ class VoskSTT:
                         result = json.loads(self.recognizer.Result())
                         if 'text' in result and result['text']:
                             print(f"\n[Final] {result['text']}")
+                            last_final_text = result['text']  # Store the final result
                             partial_text = result['text']
                             last_speech_time = time.time()
                     else:
@@ -184,15 +186,20 @@ class VoskSTT:
             if self.recognizer.AcceptWaveform(data):
                 result = json.loads(self.recognizer.Result())
                 if 'text' in result and result['text']:
+                    last_final_text = result['text']  # Update if we get a newer final result
                     partial_text = result['text']
         
-        # Get final result from recognizer
-        final_result = json.loads(self.recognizer.FinalResult())
-        final_text = final_result.get('text', '')
-        
-        # Use partial_text if final is empty but we have partial
-        if not final_text and partial_text:
-            final_text = partial_text
+        # Use the last final result we saw, or get final result from recognizer
+        if last_final_text:
+            final_text = last_final_text
+        else:
+            # Get final result from recognizer as fallback
+            final_result = json.loads(self.recognizer.FinalResult())
+            final_text = final_result.get('text', '')
+            
+            # Use partial_text if final is empty but we have partial
+            if not final_text and partial_text:
+                final_text = partial_text
         
         if final_text:
             print(f"\n{'='*50}")
