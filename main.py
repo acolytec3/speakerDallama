@@ -81,8 +81,7 @@ class VoiceDemo:
             },
             'wake_word': {
                 'model_name': 'hey_jarvis',
-                'enabled': True,
-                'post_tts_delay': 1.0
+                'enabled': True
             },
             'llm': {
                 'enabled': True,
@@ -239,12 +238,13 @@ class VoiceDemo:
                         text_to_speak = "something went wrong, please ask the robots' master for assistance"
                         print(f"⚠ Unexpected LLM error: {e}")
                 
-                # Clear wake word buffer before TTS to prevent false triggers
-                # (The wake word stream is already stopped at this point)
+                # Ensure wake word stream is stopped before TTS
+                # (It should already be stopped from listen_for_wake_word, but ensure it)
                 if self.wake_word:
-                    self.wake_word.clear_buffer()
+                    self.wake_word.stop_listening()  # Ensure stream is stopped
                 
                 # Speak the text (either LLM response or original transcription)
+                # Wake word detector remains stopped during TTS playback
                 self.tts.speak(
                     text_to_speak,
                     output_device_index=audio_config.get('output_device_index')
@@ -279,20 +279,16 @@ class VoiceDemo:
                     if self.wake_word.listen_for_wake_word(
                         input_device_index=self.config['audio'].get('input_device_index')
                     ):
-                        # Wake word detected, now transcribe
+                        # Wake word detected, now transcribe and speak
+                        # Note: listen_for_wake_word() stops its stream when it returns
                         print("Wake word detected! Starting transcription...")
-                        self.run_once()
+                        self.run_once()  # This will ensure wake word is stopped
                         
-                        # Add cooldown delay after TTS to prevent false wake word detection
-                        # This gives time for any residual audio to dissipate
+                        # TTS is now complete. Set a short cooldown to prevent false triggers
+                        # The cooldown mechanism in the callback will ignore detections for a brief period
                         wake_config = self.config.get('wake_word', {})
-                        post_tts_delay = wake_config.get('post_tts_delay', 1.0)
-                        if post_tts_delay > 0:
-                            print(f"\nCooldown: Waiting {post_tts_delay}s before resuming wake word detection...")
-                            time.sleep(post_tts_delay)
-                        
-                        # Clear buffer one more time before resuming
-                        self.wake_word.clear_buffer()
+                        cooldown_duration = wake_config.get('cooldown_duration', 1.0)
+                        self.wake_word.set_cooldown(cooldown_duration)
                         print("\nReturning to wake word detection...\n")
                 else:
                     # No wake word, just run directly

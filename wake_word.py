@@ -31,6 +31,8 @@ class WakeWordDetector:
         self.stream = None
         self.detected = False
         self.paused = False
+        self.threshold = 0.5  # Default threshold
+        self.cooldown_until = 0  # Timestamp when cooldown expires
         
     def _audio_callback(self, indata, frames, time_info, status):
         """Callback function for audio stream."""
@@ -64,12 +66,45 @@ class WakeWordDetector:
                     elif isinstance(prob, (int, float)):
                         prob = float(prob)
                     
-                    if prob > 0.5:  # Threshold for detection
+                    # Check if we're in cooldown period (after TTS)
+                    import time
+                    if time.time() < self.cooldown_until:
+                        continue  # Skip detection during cooldown
+                    
+                    if prob > self.threshold:  # Use configurable threshold
                         print(f"Wake word detected! Confidence: {prob:.2f}")
                         self.detected = True
                         return
         except Exception as e:
             print(f"Error in wake word prediction: {e}")
+    
+    def start_listening(self, input_device_index=None):
+        """
+        Start the wake word detection stream (keeps it running persistently).
+        
+        Args:
+            input_device_index: Audio device index (None for default)
+        """
+        if self.stream is not None and self.stream.active:
+            return  # Already listening
+        
+        self.detected = False
+        self.paused = False
+        
+        # Use ALSA device name if input_device_index is None
+        device = input_device_index if input_device_index is not None else 'hw:seeed2micvoicec,0'
+        
+        self.stream = sd.InputStream(
+            device=device,
+            channels=2,
+            samplerate=self.sample_rate,
+            blocksize=self.chunk_size,
+            dtype='float32',
+            callback=self._audio_callback
+        )
+        
+        print("Listening for wake word...")
+        self.stream.start()
     
     def listen_for_wake_word(self, input_device_index=None):
         """
@@ -104,6 +139,7 @@ class WakeWordDetector:
         except KeyboardInterrupt:
             pass
         
+        # Stop the stream when done (needed so STT can use the audio device)
         self.stream.stop()
         self.stream.close()
         self.stream = None
@@ -111,37 +147,66 @@ class WakeWordDetector:
         return self.detected
     
     def pause(self):
-        """Pause wake word detection (stops processing audio)."""
+        """Pause wake word detection (stops processing audio but keeps stream running)."""
         self.paused = True
-        if self.stream is not None and self.stream.active:
-            self.stream.stop()
+        self.detected = False  # Reset detection flag
+        # Clear buffer when pausing to prevent false triggers
+        self.clear_buffer()
     
     def resume(self):
         """Resume wake word detection."""
         self.paused = False
-        if self.stream is not None and not self.stream.active:
-            self.stream.start()
+        self.detected = False  # Reset detection flag
+        # Clear buffer when resuming to ensure clean state
+        self.clear_buffer()
     
     def clear_buffer(self):
         """Clear the wake word model's internal audio buffer."""
-        # Reset the model's internal state by creating a new prediction
-        # This clears any buffered audio data
+        # Reset the model's internal state by creating multiple silent predictions
+        # This clears any buffered audio data more thoroughly
         try:
-            # Create a silent audio buffer to flush the model
+            # Create multiple silent audio buffers to flush the model's internal state
+            # The model may buffer several chunks, so we flush multiple times
             silent_audio = np.zeros(self.chunk_size, dtype=np.int16)
-            self.oww_model.predict(silent_audio)
-            # Reset detected flag
+            for _ in range(5):  # Flush multiple times to clear any buffered state
+                self.oww_model.predict(silent_audio)
+            # Reset detected flag and paused state
             self.detected = False
+            self.paused = False
         except Exception as e:
             print(f"Warning: Could not clear wake word buffer: {e}")
     
+    def set_cooldown(self, duration=1.0):
+        """
+        Set a cooldown period where wake word detection is temporarily disabled.
+        This prevents false triggers immediately after TTS.
+        
+        Args:
+            duration: Cooldown duration in seconds (default: 1.0)
+        """
+        import time
+        self.cooldown_until = time.time() + duration
+        self.clear_buffer()  # Also clear buffers when starting cooldown
+    
+    def reset_model(self):
+        """Reset the wake word model by recreating it. More thorough than clear_buffer."""
+        try:
+            # Recreate the model to completely reset its internal state
+            self.oww_model = Model(wakeword_models=[self.model_name])
+            self.detected = False
+            self.paused = False
+            print("Wake word model reset")
+        except Exception as e:
+            print(f"Warning: Could not reset wake word model: {e}")
+    
     def stop_listening(self):
-        """Stop the current listening stream."""
+        """Stop the current listening stream (use pause() instead for temporary pause)."""
         if self.stream is not None:
             self.stream.stop()
             self.stream.close()
             self.stream = None
         self.detected = False
+        self.paused = False
     
     def cleanup(self):
         """Clean up resources."""

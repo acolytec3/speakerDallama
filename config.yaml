@@ -30,7 +30,7 @@ recording:
 wake_word:
   enabled: true  # Enable wake word detection
   model_name: "hey_jarvis"  # Wake word model (options: hey_jarvis, hey_mycroft, etc.)
-  post_tts_delay: 1.0  # Delay in seconds after TTS finishes before resuming wake word detection (prevents false triggers)
+  cooldown_duration: 1.0  # Seconds to ignore wake word detections after TTS (prevents false triggers)
 
 # LLM Configuration (Dallama)
 llm:

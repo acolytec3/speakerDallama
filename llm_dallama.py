@@ -114,7 +114,7 @@ class DallamaLLM:
         if conversation_id:
             payload['conversationId'] = conversation_id
         
-        chat_url = f"{self.base_url}/chat"
+        chat_url = f"{self.base_url}/voice"
         logger.debug(f"Sending chat request to {chat_url} with payload: {payload}")
         
         try:
@@ -204,7 +204,7 @@ class DallamaLLM:
         if conversation_id:
             payload['conversationId'] = conversation_id
         
-        chat_url = f"{self.base_url}/chat"
+        chat_url = f"{self.base_url}/voice"
         logger.debug(f"Sending chat request (with conversation_id) to {chat_url} with payload: {payload}")
         
         try:
