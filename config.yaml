@@ -26,5 +26,10 @@ recording:
   silence_duration: 1.5   # Seconds of silence before stopping
   max_recording_duration: 30  # Maximum recording time in seconds
 
+# Wake Word Configuration (OpenWakeWord)
+wake_word:
+  enabled: true  # Enable wake word detection
+  model_name: "hey_jarvis"  # Wake word model (options: hey_jarvis, hey_mycroft, etc.)
+
 
 

@@ -11,6 +11,7 @@ import sys
 import signal
 from stt_vosk import VoskSTT
 from tts_piper import PiperTTS
+from wake_word import WakeWordDetector
 
 
 class VoiceDemo:
@@ -19,6 +20,7 @@ class VoiceDemo:
         self.config = self.load_config(config_path)
         self.stt = None
         self.tts = None
+        self.wake_word = None
         self.running = True
         
         # Setup signal handlers for graceful shutdown
@@ -63,6 +65,10 @@ class VoiceDemo:
                 'silence_threshold': 500,
                 'silence_duration': 1.5,
                 'max_recording_duration': 30
+            },
+            'wake_word': {
+                'model_name': 'hey_jarvis',
+                'enabled': True
             }
         }
     
@@ -106,6 +112,20 @@ class VoiceDemo:
             print("\nNote: You may need to install Piper TTS separately.")
             print("See README.md for installation instructions.")
             raise
+        
+        # Initialize Wake Word Detector
+        try:
+            wake_config = self.config.get('wake_word', {})
+            if wake_config.get('enabled', True):
+                self.wake_word = WakeWordDetector(
+                    model_name=wake_config.get('model_name', 'hey_jarvis'),
+                    sample_rate=self.config['vosk']['sample_rate']
+                )
+                print("✓ Wake word detector initialized")
+        except Exception as e:
+            print(f"✗ Failed to initialize wake word detector: {e}")
+            print("Continuing without wake word detection...")
+            self.wake_word = None
         
         print("=" * 60)
         print()
@@ -158,22 +178,41 @@ class VoiceDemo:
         print("\n" + "=" * 60)
         print("Voice Demo - Ready")
         print("=" * 60)
-        print("Press Ctrl+C to exit")
+        if self.wake_word:
+            print("Wake word detection enabled - waiting for wake word...")
+        else:
+            print("Wake word detection disabled - Press Ctrl+C to exit")
         print()
         
         while self.running:
             try:
-                self.run_once()
-                print("\nReady for next input...\n")
+                # Wait for wake word if enabled
+                if self.wake_word:
+                    print("Waiting for wake word...")
+                    if self.wake_word.listen_for_wake_word(
+                        input_device_index=self.config['audio'].get('input_device_index')
+                    ):
+                        # Wake word detected, now transcribe
+                        print("Wake word detected! Starting transcription...")
+                        self.run_once()
+                        print("\nReturning to wake word detection...\n")
+                else:
+                    # No wake word, just run directly
+                    self.run_once()
+                    print("\nReady for next input...\n")
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 print(f"Error: {e}")
+                import traceback
+                traceback.print_exc()
                 if not self.running:
                     break
     
     def cleanup(self):
         """Clean up resources."""
+        if self.wake_word:
+            self.wake_word.cleanup()
         if self.stt:
             self.stt.cleanup()
         if self.tts:
@@ -217,7 +256,14 @@ def main():
         
         # Run
         if args.once:
-            demo.run_once()
+            # For --once, still wait for wake word if enabled
+            if demo.wake_word:
+                if demo.wake_word.listen_for_wake_word(
+                    input_device_index=demo.config['audio'].get('input_device_index')
+                ):
+                    demo.run_once()
+            else:
+                demo.run_once()
         else:
             demo.run_loop()
     
