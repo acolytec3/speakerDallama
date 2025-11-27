@@ -30,12 +30,13 @@ class WakeWordDetector:
         self.oww_model = Model(wakeword_models=[model_name])
         self.stream = None
         self.detected = False
+        self.paused = False
         
     def _audio_callback(self, indata, frames, time_info, status):
         """Callback function for audio stream."""
         if status:
             print(f"Wake word audio callback status: {status}")
-        if self.detected:
+        if self.detected or self.paused:
             return
         
         # Convert float32 to int16 numpy array
@@ -108,6 +109,39 @@ class WakeWordDetector:
         self.stream = None
         
         return self.detected
+    
+    def pause(self):
+        """Pause wake word detection (stops processing audio)."""
+        self.paused = True
+        if self.stream is not None and self.stream.active:
+            self.stream.stop()
+    
+    def resume(self):
+        """Resume wake word detection."""
+        self.paused = False
+        if self.stream is not None and not self.stream.active:
+            self.stream.start()
+    
+    def clear_buffer(self):
+        """Clear the wake word model's internal audio buffer."""
+        # Reset the model's internal state by creating a new prediction
+        # This clears any buffered audio data
+        try:
+            # Create a silent audio buffer to flush the model
+            silent_audio = np.zeros(self.chunk_size, dtype=np.int16)
+            self.oww_model.predict(silent_audio)
+            # Reset detected flag
+            self.detected = False
+        except Exception as e:
+            print(f"Warning: Could not clear wake word buffer: {e}")
+    
+    def stop_listening(self):
+        """Stop the current listening stream."""
+        if self.stream is not None:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+        self.detected = False
     
     def cleanup(self):
         """Clean up resources."""

@@ -99,3 +99,4 @@ echo "Note: uv is installed at ~/.cargo/bin/uv"
 echo "      Make sure it's in your PATH for future sessions"
 echo ""
 
+

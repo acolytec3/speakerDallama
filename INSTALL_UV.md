@@ -74,7 +74,26 @@ python3 main.py
 ## Troubleshooting
 
 **"uv: command not found" after installation:**
-- Add to PATH: `export PATH="$HOME/.cargo/bin:$PATH"`
+- Check where uv is installed: `find ~ -name uv -type f 2>/dev/null`
+- Common locations:
+  - `~/.cargo/bin/uv` (official installer)
+  - `~/.local/bin/uv` (pip install --user or some installers)
+- Add to PATH based on actual location:
+  ```bash
+  # For ~/.cargo/bin
+  export PATH="$HOME/.cargo/bin:$PATH"
+  
+  # For ~/.local/bin
+  export PATH="$HOME/.local/bin:$PATH"
+  
+  # Or add both to be safe
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+  ```
+- Add to shell profile for permanent access:
+  ```bash
+  echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+  ```
 - Or restart your terminal session
 
 **Installation fails:**
@@ -83,8 +102,13 @@ python3 main.py
 - Try: `curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --help`
 
 **Permission errors:**
-- uv installs to `~/.cargo/bin` by default (user space)
+- uv installs to user space (`~/.cargo/bin` or `~/.local/bin`)
 - No sudo needed for installation or package management
+
+**uv disappeared after system update:**
+- Check if it still exists: `ls -la ~/.local/bin/uv ~/.cargo/bin/uv`
+- If it exists but isn't found, PATH issue - see above
+- If it's gone, reinstall: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
 
 

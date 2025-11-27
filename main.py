@@ -9,9 +9,20 @@ import yaml
 import os
 import sys
 import signal
+import uuid
+import time
+import logging
 from stt_vosk import VoskSTT
 from tts_piper import PiperTTS
 from wake_word import WakeWordDetector
+from llm_dallama import DallamaLLM, LLMAPIError
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 
 class VoiceDemo:
@@ -21,6 +32,8 @@ class VoiceDemo:
         self.stt = None
         self.tts = None
         self.wake_word = None
+        self.llm = None
+        self.conversation_id = None
         self.running = True
         
         # Setup signal handlers for graceful shutdown
@@ -68,7 +81,14 @@ class VoiceDemo:
             },
             'wake_word': {
                 'model_name': 'hey_jarvis',
-                'enabled': True
+                'enabled': True,
+                'post_tts_delay': 1.0
+            },
+            'llm': {
+                'enabled': True,
+                'base_url': 'http://localhost:3000',
+                'timeout': 30,
+                'conversation_id': None
             }
         }
     
@@ -127,6 +147,35 @@ class VoiceDemo:
             print("Continuing without wake word detection...")
             self.wake_word = None
         
+        # Initialize LLM Client
+        try:
+            llm_config = self.config.get('llm', {})
+            if llm_config.get('enabled', True):
+                base_url = llm_config.get('base_url', 'http://localhost:3000')
+                timeout = llm_config.get('timeout', 30)
+                self.llm = DallamaLLM(base_url=base_url, timeout=timeout)
+                
+                # Initialize conversation ID
+                config_conversation_id = llm_config.get('conversation_id')
+                if config_conversation_id:
+                    self.conversation_id = config_conversation_id
+                else:
+                    # Generate a unique conversation ID
+                    self.conversation_id = str(uuid.uuid4())
+                
+                # Check health
+                if self.llm.check_health():
+                    print("✓ LLM client initialized and server is ready")
+                else:
+                    print("⚠ LLM client initialized but server is not ready")
+            else:
+                print("⊘ LLM integration disabled")
+                self.llm = None
+        except Exception as e:
+            print(f"✗ Failed to initialize LLM client: {e}")
+            print("Continuing without LLM integration...")
+            self.llm = None
+        
         print("=" * 60)
         print()
     
@@ -156,10 +205,48 @@ class VoiceDemo:
             # Stop recording
             self.stt.stop_recording()
             
-            # Speak if we got text
+            # Process text through LLM if enabled and we have text
             if text and text.strip():
+                text_to_speak = text.strip()
+                
+                # If LLM is enabled, try to get response from LLM
+                if self.llm:
+                    try:
+                        # Send to LLM and get response with conversation context
+                        response_text, updated_conversation_id = self.llm.get_conversation_id(
+                            text_to_speak,
+                            conversation_id=self.conversation_id
+                        )
+                        
+                        if response_text is not None:
+                            # LLM responded successfully
+                            text_to_speak = response_text
+                            # Update conversation ID if returned
+                            if updated_conversation_id:
+                                self.conversation_id = updated_conversation_id
+                        else:
+                            # Server unavailable
+                            text_to_speak = "My mind is currently lost. Can you help me find it"
+                            print("⚠ LLM server unavailable")
+                    
+                    except LLMAPIError as e:
+                        # API error (400, 500, 502, etc.)
+                        text_to_speak = "something went wrong, please ask the robots' master for assistance"
+                        print(f"⚠ LLM API error: {e}")
+                    
+                    except Exception as e:
+                        # Unexpected error
+                        text_to_speak = "something went wrong, please ask the robots' master for assistance"
+                        print(f"⚠ Unexpected LLM error: {e}")
+                
+                # Clear wake word buffer before TTS to prevent false triggers
+                # (The wake word stream is already stopped at this point)
+                if self.wake_word:
+                    self.wake_word.clear_buffer()
+                
+                # Speak the text (either LLM response or original transcription)
                 self.tts.speak(
-                    text,
+                    text_to_speak,
                     output_device_index=audio_config.get('output_device_index')
                 )
             else:
@@ -195,6 +282,17 @@ class VoiceDemo:
                         # Wake word detected, now transcribe
                         print("Wake word detected! Starting transcription...")
                         self.run_once()
+                        
+                        # Add cooldown delay after TTS to prevent false wake word detection
+                        # This gives time for any residual audio to dissipate
+                        wake_config = self.config.get('wake_word', {})
+                        post_tts_delay = wake_config.get('post_tts_delay', 1.0)
+                        if post_tts_delay > 0:
+                            print(f"\nCooldown: Waiting {post_tts_delay}s before resuming wake word detection...")
+                            time.sleep(post_tts_delay)
+                        
+                        # Clear buffer one more time before resuming
+                        self.wake_word.clear_buffer()
                         print("\nReturning to wake word detection...\n")
                 else:
                     # No wake word, just run directly
@@ -217,6 +315,8 @@ class VoiceDemo:
             self.stt.cleanup()
         if self.tts:
             self.tts.cleanup()
+        if self.llm:
+            self.llm.cleanup()
 
 
 def main():
@@ -278,6 +378,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
 

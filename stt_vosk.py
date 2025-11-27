@@ -138,9 +138,14 @@ class VoskSTT:
                     # Calculate RMS for silence detection
                     audio_array = np.frombuffer(data, dtype=np.int16)
                     if len(audio_array) > 0:
-                        rms = np.sqrt(np.mean(audio_array**2))
+                        mean_squared = np.mean(audio_array**2)
+                        # Handle edge cases: NaN, negative, or zero values
+                        if np.isnan(mean_squared) or mean_squared <= 0:
+                            rms = 0.0
+                        else:
+                            rms = np.sqrt(mean_squared)
                     else:
-                        rms = 0
+                        rms = 0.0
                     
                     # Process with Vosk
                     if self.recognizer.AcceptWaveform(data):

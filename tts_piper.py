@@ -162,3 +162,4 @@ class PiperTTS:
         """Clean up resources."""
         # sounddevice doesn't need explicit cleanup
         pass
+
