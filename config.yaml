@@ -11,6 +11,12 @@ piper:
   config_path: "./piper-voices/en_US-lessac-medium.onnx.json"  # Path to Piper config
   sample_rate: 22050  # Piper output sample rate
 
+# Flite TTS Configuration (lightweight, fast alternative)
+flite:
+  binary_path: "flite"  # Path to flite binary (usually in PATH, or use /usr/bin/flite)
+  voice: "slt"  # Voice to use: slt (default), rms, awb, kal, kal16
+  sample_rate: 16000  # Flite output sample rate
+
 # Audio Configuration
 # To find your Respeaker HAT device indices, run: python3 list_audio_devices.py
 # The Respeaker 2-Mic Pi HAT typically appears as "seeed-2mic-voicecard"

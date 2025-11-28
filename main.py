@@ -10,25 +10,24 @@ import os
 import sys
 import signal
 import uuid
-import time
-import logging
 from stt_vosk import VoskSTT
 from tts_piper import PiperTTS
+from tts_flite import FliteTTS
 from wake_word import WakeWordDetector
 from llm_dallama import DallamaLLM, LLMAPIError
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
 
 class VoiceDemo:
-    def __init__(self, config_path='config.yaml'):
-        """Initialize the voice demo application."""
+    def __init__(self, config_path='config.yaml', tts_engine='piper'):
+        """
+        Initialize the voice demo application.
+        
+        Args:
+            config_path: Path to configuration file
+            tts_engine: TTS engine to use ('piper' or 'flite')
+        """
         self.config = self.load_config(config_path)
+        self.tts_engine_name = tts_engine.lower()
         self.stt = None
         self.tts = None
         self.wake_word = None
@@ -67,6 +66,11 @@ class VoiceDemo:
                 'model_path': './piper-voices/en_US-lessac-medium.onnx',
                 'config_path': './piper-voices/en_US-lessac-medium.onnx.json',
                 'sample_rate': 22050
+            },
+            'flite': {
+                'binary_path': 'flite',  # Usually in PATH
+                'voice': 'slt',  # Available voices: slt, rms, awb, kal, kal16
+                'sample_rate': 16000
             },
             'audio': {
                 'input_device_index': None,
@@ -116,20 +120,34 @@ class VoiceDemo:
             print(f"✗ Failed to initialize Vosk STT: {e}")
             raise
         
-        # Initialize Piper TTS
+        # Initialize TTS engine (Piper or Flite) - only the selected one
         try:
-            piper_config = self.config['piper']
-            self.tts = PiperTTS(
-                binary_path=piper_config['binary_path'],
-                model_path=piper_config['model_path'],
-                config_path=piper_config.get('config_path'),
-                sample_rate=piper_config['sample_rate']
-            )
-            print("✓ Piper TTS initialized")
+            if self.tts_engine_name == 'flite':
+                flite_config = self.config.get('flite', {})
+                self.tts = FliteTTS(
+                    binary_path=flite_config.get('binary_path', 'flite'),
+                    voice=flite_config.get('voice', 'slt'),
+                    sample_rate=flite_config.get('sample_rate', 16000)
+                )
+                print(f"✓ Flite TTS initialized (voice: {flite_config.get('voice', 'slt')})")
+            else:  # Default to Piper
+                piper_config = self.config['piper']
+                self.tts = PiperTTS(
+                    binary_path=piper_config['binary_path'],
+                    model_path=piper_config['model_path'],
+                    config_path=piper_config.get('config_path'),
+                    sample_rate=piper_config['sample_rate']
+                )
+                print("✓ Piper TTS initialized")
         except Exception as e:
-            print(f"✗ Failed to initialize Piper TTS: {e}")
-            print("\nNote: You may need to install Piper TTS separately.")
-            print("See README.md for installation instructions.")
+            engine_name = self.tts_engine_name.upper()
+            print(f"✗ Failed to initialize {engine_name} TTS: {e}")
+            if self.tts_engine_name == 'piper':
+                print("\nNote: You may need to install Piper TTS separately.")
+                print("See README.md for installation instructions.")
+            elif self.tts_engine_name == 'flite':
+                print("\nNote: You may need to install Flite TTS:")
+                print("  sudo apt-get install flite")
             raise
         
         # Initialize Wake Word Detector
@@ -239,12 +257,10 @@ class VoiceDemo:
                         print(f"⚠ Unexpected LLM error: {e}")
                 
                 # Ensure wake word stream is stopped before TTS
-                # (It should already be stopped from listen_for_wake_word, but ensure it)
                 if self.wake_word:
                     self.wake_word.stop_listening()  # Ensure stream is stopped
                 
                 # Speak the text (either LLM response or original transcription)
-                # Wake word detector remains stopped during TTS playback
                 self.tts.speak(
                     text_to_speak,
                     output_device_index=audio_config.get('output_device_index')
@@ -285,7 +301,6 @@ class VoiceDemo:
                         self.run_once()  # This will ensure wake word is stopped
                         
                         # TTS is now complete. Set a short cooldown to prevent false triggers
-                        # The cooldown mechanism in the callback will ignore detections for a brief period
                         wake_config = self.config.get('wake_word', {})
                         cooldown_duration = wake_config.get('cooldown_duration', 1.0)
                         self.wake_word.set_cooldown(cooldown_duration)
@@ -326,6 +341,12 @@ def main():
         help='Path to configuration file (default: config.yaml)'
     )
     parser.add_argument(
+        '--tts-engine',
+        choices=['piper', 'flite'],
+        default='piper',
+        help='TTS engine to use: piper or flite (default: piper)'
+    )
+    parser.add_argument(
         '--list-devices',
         action='store_true',
         help='List available audio devices and exit'
@@ -339,7 +360,7 @@ def main():
     args = parser.parse_args()
     
     # Create demo instance
-    demo = VoiceDemo(config_path=args.config)
+    demo = VoiceDemo(config_path=args.config, tts_engine=args.tts_engine)
     
     try:
         # Initialize
