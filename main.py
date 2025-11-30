@@ -15,6 +15,7 @@ from tts_piper import PiperTTS
 from tts_flite import FliteTTS
 from wake_word import WakeWordDetector
 from llm_dallama import DallamaLLM, LLMAPIError
+from pixels import pixels
 
 
 class VoiceDemo:
@@ -34,6 +35,7 @@ class VoiceDemo:
         self.llm = None
         self.conversation_id = None
         self.running = True
+        self.pixels = pixels
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -194,6 +196,14 @@ class VoiceDemo:
             self.llm = None
         
         print("=" * 60)
+        
+        # Initialize pixels (LEDs)
+        try:
+            # Pixels are initialized globally, just verify they're available
+            print("✓ LED pixels initialized")
+        except Exception as e:
+            print(f"⚠ LED pixels not available: {e}")
+        
         print()
     
     def list_devices(self):
@@ -212,6 +222,9 @@ class VoiceDemo:
             # Start recording
             self.stt.start_recording(input_device_index=audio_config.get('input_device_index'))
             
+            # Show listening pattern while transcribing
+            self.pixels.listen()
+            
             # Transcribe
             text = self.stt.transcribe_stream(
                 silence_threshold=recording_config['silence_threshold'],
@@ -228,6 +241,8 @@ class VoiceDemo:
                 
                 # If LLM is enabled, try to get response from LLM
                 if self.llm:
+                    # Show thinking pattern while waiting for LLM response
+                    self.pixels.think()
                     try:
                         # Send to LLM and get response with conversation context
                         response_text, updated_conversation_id = self.llm.get_conversation_id(
@@ -260,20 +275,30 @@ class VoiceDemo:
                 if self.wake_word:
                     self.wake_word.stop_listening()  # Ensure stream is stopped
                 
+                # Show speaking pattern while TTS is active
+                self.pixels.speak()
+                
                 # Speak the text (either LLM response or original transcription)
                 self.tts.speak(
                     text_to_speak,
                     output_device_index=audio_config.get('output_device_index')
                 )
+                
+                # Turn off LEDs after speaking
+                self.pixels.off()
             else:
                 print("No text to speak.\n")
+                # Turn off LEDs if no text
+                self.pixels.off()
         
         except KeyboardInterrupt:
             print("\nInterrupted by user")
             self.stt.stop_recording()
+            self.pixels.off()
         except Exception as e:
             print(f"\nError during processing: {e}")
             self.stt.stop_recording()
+            self.pixels.off()
             raise
     
     def run_loop(self):
@@ -298,6 +323,7 @@ class VoiceDemo:
                         # Wake word detected, now transcribe and speak
                         # Note: listen_for_wake_word() stops its stream when it returns
                         print("Wake word detected! Starting transcription...")
+                        self.pixels.wakeup()  # Show wakeup pattern
                         self.run_once()  # This will ensure wake word is stopped
                         
                         # TTS is now complete. Set a short cooldown to prevent false triggers
@@ -320,6 +346,9 @@ class VoiceDemo:
     
     def cleanup(self):
         """Clean up resources."""
+        # Turn off LEDs
+        self.pixels.off()
+        
         if self.wake_word:
             self.wake_word.cleanup()
         if self.stt:
