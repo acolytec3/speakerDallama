@@ -243,11 +243,30 @@ class VoiceDemo:
                 if self.llm:
                     # Show thinking pattern while waiting for LLM response
                     self.pixels.think()
+                    
+                    # Track if we received a tool_call event
+                    tool_call_received = False
+                    
+                    def on_tool_call(data):
+                        """Handle tool_call events - show 'Just a moment...' message"""
+                        nonlocal tool_call_received
+                        tool_call_received = True
+                        print("🔧 Tool call detected - processing...")
+                        # Keep thinking pattern active
+                        self.pixels.think()
+                    
+                    def on_chunk(chunk_text):
+                        """Handle chunk events - append to response"""
+                        # Chunks are accumulated in the response_text automatically
+                        pass
+                    
                     try:
-                        # Send to LLM and get response with conversation context
+                        # Send to LLM and get response with conversation context via SSE
                         response_text, updated_conversation_id = self.llm.get_conversation_id(
                             text_to_speak,
-                            conversation_id=self.conversation_id
+                            conversation_id=self.conversation_id,
+                            on_tool_call=on_tool_call,
+                            on_chunk=on_chunk
                         )
                         
                         if response_text is not None:
